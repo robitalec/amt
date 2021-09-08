@@ -1,0 +1,254 @@
+---
+title: "Simulate movement and space use with `amt`"
+author: "Johannes Signer"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Simulate movement and space use with `amt`}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## Dispersal kernel
+
+The **dispersal kernel** is the basis for all simulations that are implemented in `amt`. The dispersal kernel consists of a habitat independent movement kernel, a habitat kernel and possible interactions between habitat and movement. The `amt` implementation combines the movement kernel and habitat kernel within the selection function of an *integrated Step Selection Function* (see Avgar et al. 2016, Signer et al. *in preparation*). The dispersal kernel needs to be updated at each time step to allow the animal to react to a spatially and temporally changing environment.
+
+This formulation comes with the advantage that the model can be easily parameterized by fitting an iSSA to observed movement data. But it is also possible to build a dispersal kernel from scratch and use this for simulations.
+
+### Dispersal kernel from scratch
+
+```{r}
+library(amt)
+```
+
+We start with the simplest dispersal kernel possible. This is a kernel that solely depends on the step-length distribution of the animal. We use a Gamma distribution here with parameters shape $k = 2$ and scale $\theta = 10$. 
+
+```{r}
+curve(dgamma(x, scale = 10, shape = 2), from = 0, to = 200, 
+      ylab = "Density", xlab = "sl_")
+```
+
+Next, we have to translate the parameters of the step-length distribution to the selection function of the iSSA. There are function in `amt` to do this. The scale parameter is linked to the step length and and the shape parameter is linked to the log of the step length (see also Avgar et al. 2016 for details).
+
+```{r}
+library(amt)
+devtools::load_all()
+scale_to_sl(10)
+shape_to_log_sl(2)
+```
+
+The last parameter that we need for calculating a dispersal kernel is a truncation distance. This is the maximum distance that is allowed by the dispersal kernel and we need this for computational reasons. An easy way to obtain this distance, is to just calculate the 95% or 99% quantile of the step-length distribution. Here we use the 99% quantile. 
+
+
+```{r}
+(max_dist <- qgamma(0.99, scale = 10, shape = 2))
+```
+
+With this we have all the important pieces together. The only information that is missing is a template for the landscape. We need this **even** if no spatial covariates are included because the dispersal kernel is sptially explicit on a landscape. The argument `spatial.covars` expects a raster stack (see also `?raster::stack`) with the resolution and with a (partially) overlapping extent of the dispersal kernel.
+
+```{r}
+# Create the extend and resolution of a raster
+r <- raster(xmn = 0, xmx = 1e3, ymn = 0, ymx = 1e3, res = 1)
+# Assign all cells a value of 1
+r[] <- 1
+# Create a raster stack
+G <- raster::stack(r)
+```
+
+Now we can calculate a dispersal kernel using the function `dispersal_kernel()`.
+
+```{r}
+dk1 <- dispersal_kernel(
+  # This is the selection function
+  wx = ~ sl_ + log_sl_, 
+  # We have to provide values for the coefficients 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1), 
+  # The template for space
+  spatial.covars = G, 
+  # Give the center of the dispersal kernel
+  start = c(500, 500), 
+  # Maximum dispersal distance
+  max.dist = 67,
+  # Should a raster layer be returned?
+  return.raster = TRUE)
+```
+
+```{r}
+raster::plot(dk1)
+```
+
+Lets use the same dispersal kernel, but shift it towards the edge of the landscape.
+This lead to truncation of the dispersal kernel. 
+
+
+```{r}
+dk2 <- dispersal_kernel(
+  ~ sl_ + log_sl_, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1), 
+  spatial.covars = G, start = c(950, 980), 
+  return.raster = TRUE, max.dist = 67)
+raster::plot(dk2)
+```
+
+
+As a next step we can add directional persistence to the dispersal kernel using a von Mises distribution.
+The von Mises distribution is a circular distribution that allows to model directions. 
+We will start with a concentration parameter $\kappa = 1$ (0 would indicate a uniform distribution). 
+
+```{r}
+library(circular)
+curve(dvonmises(x, mu = 0, kappa = 1), from = -pi, to = pi)
+```
+
+We can add an additional term to the selection function: the cosine of the turn angle, which introduces directionality. 
+Hence, we have to translate the parameter $\kappa$ from the von Mises distribution into the a coefficient for the cosine of the turn angle (the function `kappa_to_cos_ta()`) does this.
+
+```{r}
+kappa_to_cos_ta(1)
+```
+
+Now we only have to adjust the arguments `wx` by adding `cos_ta_` and giving a coefficient value to for `cos_ta_`.
+Everything else remains unchanged. 
+
+
+```{r}
+dk3 <- dispersal_kernel(
+  wx = ~ sl_ + log_sl_ + cos_ta_, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2), 
+  spatial.covars = G, start = c(200, 200), 
+  return.raster = TRUE, max.dist = 67)
+raster::plot(dk3)
+```
+
+By default the direction of the dispersal kernel is 0 (north). 
+This can be controlled with the argument `direction`. 
+The direction should always be given in radian. 
+
+```{r}
+dk5 <- dispersal_kernel(
+  ~ sl_ + log_sl_ + cos_ta_, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 1), 
+  spatial.covars = G, start = c(200, 200), 
+  return.raster = TRUE, max.dist = 67, direction = pi/2)
+raster::plot(dk5)
+```
+
+<!----
+#' Habitat: Without movement
+First we 
+
+set.seed(123332)
+lscp1 <- nlm_gaussianfield(1000, 1000, 1)
+lscp2 <- lscp1
+lscp2[] <- 0
+lscp2[1:500, ] <- 1
+
+
+plot(lscp1)
+plot(lscp2)
+
+lscp <- stack(lscp1, lscp2)
+names(lscp) <- c("hab1", "hab2")
+
+#' Movement charactersitics
+
+dk6 <- dispersal_kernel(
+  ~ hab1_end + hab2_end,
+  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5), 
+  spatial.covars = lscp, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 100, direction = pi/2)
+plot(dk6)
+
+#' Interaction with non spatial covariate
+other <- tibble(day = 0:1)
+dk6a <- dispersal_kernel(
+  ~ hab1_end + hab2_end + hab2_end:day,
+  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5, "hab2_end:day" = 2), 
+  spatial.covars = lscp, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 100, temporal.covars = other[1, ])
+plot(dk6a)
+
+dk6b <- dispersal_kernel(
+  ~ hab1_end + hab2_end + hab2_end:day,
+  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5, "hab2_end:day" = 2), 
+  spatial.covars = lscp, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 100, temporal.covars = other[2, ])
+plot(dk6b)
+
+#' And now lets add movement
+dk7 <- dispersal_kernel(
+  ~ sl_ + log_sl_ + cos_ta_ + hab2_end, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1), 
+  spatial.covars = lscp, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 100)
+plot(dk7)
+
+#' Finally lets add an interaction between movement hand habitat: The directional persistance now depends on the start of the habitat
+
+dk8 <- dispersal_kernel(
+  ~ sl_ + log_sl_ + cos_ta_ + hab2_end + cos_ta_:hab2_start, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1, 
+                   "cos_ta_:hab2_start" = -2), 
+  spatial.covars = lscp, start = c(500, 490), 
+  return.raster = TRUE, max.dist = 100)
+plot(dk8)
+
+#' Now lets start from a different position (i.e., where `hab2_start = 1`)
+dk9 <- dispersal_kernel(
+  ~ sl_ + log_sl_ + cos_ta_ + hab2_end + cos_ta_:hab2_start, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1, 
+                   "cos_ta_:hab2_start" = -2), 
+  spatial.covars = lscp, start = c(500, 510), 
+  return.raster = TRUE, max.dist = 100)
+plot(dk9)
+
+
+
+#' # How long does it take
+#+echo = FALSE
+res <- map(c(0.5, 1, 5, 10, 20, 50), ~ {
+  lscp1 <- raster(xmn = 0, xmx = 1e3, ymn = 0, ymx = 1e3, res = .)
+  lscp1[] <- 1
+  lscp <- stack(lscp1)
+  names(lscp) <- "hab1"
+  
+  system.time(
+    dk1 <- dispersal_kernel(
+      ~ sl_ + log_sl_, 
+      coefficients = c("hab1" = -0.1, "log_sl_" = 1), 
+      spatial.covars = lscp, start = c(500, 500), 
+      return.raster = TRUE, max.dist = 100)
+  )
+})
+
+tibble(
+  x = 1e4 / c(0.5, 1, 5, 10, 20, 50)^2, 
+  y = map_dbl(res, "elapsed")
+) %>% ggplot(aes(x, y)) + geom_point() +
+  scale_x_continuous(trans = "log10") +
+  labs(x = "No cells in dispersal kernel", y = "Time [s]")
+
+#' For < 1000 cells in the dispersal kernel, the computation time is < 0.1 seconds. 
+#' 
+
+
+### Dispersal kernel from a fitted model
+
+## Simulate a trajectory
+
+## Simulate a transient utilization distribution (TUD)
+
+## Simulate a steady state utilization distribution (SSUD)
+
+## Session
+
+```{r}
+sessioninfo::session_info()
+```
+
+
+--->

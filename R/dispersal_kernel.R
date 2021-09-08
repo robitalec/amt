@@ -113,10 +113,11 @@ kernel_add_covars <- function(kernel, spatial.covars, position, temporal.covars 
   checkmate::assert_class(spatial.covars, "RasterStack")
   checkmate::assert_data_frame(temporal.covars, null.ok = TRUE)
 
-  cells <- cellFromXY(spatial.covars, cbind(kernel$x, kernel$y))
+  cells <- raster::cellFromXY(spatial.covars, cbind(kernel$x, kernel$y))
   sc1 <- as.data.frame(spatial.covars[cells])
 
-  cc <- cellFromXY(spatial.covars, cbind(position[1], position[2]))
+  cc <- raster::cellFromXY(spatial.covars,
+                           cbind(position[1], position[2]))
   ii <- which(cc == cells)[1]
   sc2 <- sc1[ii, , drop = FALSE]
   names(sc1) <- paste0(names(sc1), "_end")
@@ -183,7 +184,7 @@ dispersal_kernel <- function(
   direction = 0, max.dist = 100, return.raster = FALSE, normalize = TRUE) {
 
   dk0 <- kernel_setup(spatial.covars, max.dist = max.dist, position = start)
-  dk1 <- kernel_shift(dk0, position = start)
+  dk1 <- kernel_shift(dk0, dxy = start)
   dk2 <- kernel_rotate(dk1, direction = direction)
   dk3 <- kernel_add_covars(dk2, spatial.covars = spatial.covars,
                            position = start,
@@ -235,7 +236,7 @@ simulate_track <- function(
   ymx <- raster::xmax(spatial.covars)
 
   for (i in 1:n) {
-    dk <- kernel_shift(k, position = start1)
+    dk <- kernel_shift(k, dxy = start1)
     dk <- kernel_rotate(dk, direction = dir)
     dk <- kernel_add_covars(dk,
                             spatial.covars = spatial.covars, position = start1,
