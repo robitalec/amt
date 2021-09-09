@@ -199,12 +199,13 @@ dispersal_kernel <- function(
 #' @param as.track Should a track be returned.
 #' @param start.time The time stamp of the first simulated location.
 #' @param delta.time Time increment for each subsequent step.
+#' @export
 #'
 
 simulate_track <- function(
   wx, coefficients, start, spatial.covars,
   direction = 0, temporal.covars = NULL, max.dist = 100, n = 10,
-  as.track = TRUE, start.time = ymd_hms("2020-01-01 00:00:00"),
+  as.track = TRUE, start.time = lubridate::ymd_hms("2020-01-01 00:00:00"),
   delta.time = hours(2)) {
 
   ##

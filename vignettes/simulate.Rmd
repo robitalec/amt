@@ -21,6 +21,8 @@ This formulation comes with the advantage that the model can be easily parameter
 
 ### Dispersal kernel from scratch
 
+#### Only movement (movement kernel)
+
 ```{r}
 library(amt)
 ```
@@ -126,7 +128,7 @@ raster::plot(dk3)
 
 By default the direction of the dispersal kernel is 0 (north). 
 This can be controlled with the argument `direction`. 
-The direction should always be given in radian. 
+The direction should always be given in radiant. 
 
 ```{r}
 dk5 <- dispersal_kernel(
@@ -137,89 +139,111 @@ dk5 <- dispersal_kernel(
 raster::plot(dk5)
 ```
 
-<!----
-#' Habitat: Without movement
-First we 
+#### Only habtiat (habitat kernel)
 
-set.seed(123332)
-lscp1 <- nlm_gaussianfield(1000, 1000, 1)
-lscp2 <- lscp1
-lscp2[] <- 0
-lscp2[1:500, ] <- 1
+Let us now turn to a dispersal kernel without movement (i.e., it is purely goverend by habitat and a maximum distance). For this we simulate two landscapes. 
 
+```{r}
+G1 <- r
+G1[, 1:500] <- 0
 
-plot(lscp1)
-plot(lscp2)
+raster::plot(G1)
 
-lscp <- stack(lscp1, lscp2)
-names(lscp) <- c("hab1", "hab2")
+# Lets create again a raster stack
+G1 <- raster::stack(G1)
+names(G1) <- c("hab1")
+```
 
-#' Movement charactersitics
+Now we can simulate again a dispersal kernel independent of movement. 
 
+```{r}
 dk6 <- dispersal_kernel(
-  ~ hab1_end + hab2_end,
-  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5), 
-  spatial.covars = lscp, start = c(500, 500), 
-  return.raster = TRUE, max.dist = 100, direction = pi/2)
-plot(dk6)
+  ~ hab1_end,
+  coefficients = c("hab1_end" = -0.8), 
+  spatial.covars = G1, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 67, direction = pi/2)
+raster::plot(dk6)
+```
 
-#' Interaction with non spatial covariate
+
+We can add interaction between habitat covariates and non-spatial covariates (for example time of the day). 
+
+
+```{r}
 other <- tibble(day = 0:1)
 dk6a <- dispersal_kernel(
-  ~ hab1_end + hab2_end + hab2_end:day,
-  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5, "hab2_end:day" = 2), 
-  spatial.covars = lscp, start = c(500, 500), 
-  return.raster = TRUE, max.dist = 100, temporal.covars = other[1, ])
-plot(dk6a)
+  ~ hab1_end + hab1_end:day,
+  coefficients = c("hab1_end" = 0.8, "hab1_end:day" = -0.8), 
+  spatial.covars = G1, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 67, temporal.covars = other[1, ])
+raster::plot(dk6a)
+```
 
+The same dispersal kernel for the same position in space, but for the night. 
+```{r}
 dk6b <- dispersal_kernel(
-  ~ hab1_end + hab2_end + hab2_end:day,
-  coefficients = c("hab1_end" = 0.8, "hab2_end" = 0.5, "hab2_end:day" = 2), 
-  spatial.covars = lscp, start = c(500, 500), 
-  return.raster = TRUE, max.dist = 100, temporal.covars = other[2, ])
-plot(dk6b)
+  ~ hab1_end + hab1_end:day,
+  coefficients = c("hab1_end" = 0.8, "hab1_end:day" = -0.8), 
+  spatial.covars = G1, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 67, temporal.covars = other[2, ])
+raster::plot(dk6b)
 
-#' And now lets add movement
+```
+
+#### Movement and habitat
+
+In a next step with the goal to make the dispersal kernel more realistic, we can add movement to the habitat selection (as illustrated before). 
+
+```{r}
 dk7 <- dispersal_kernel(
-  ~ sl_ + log_sl_ + cos_ta_ + hab2_end, 
-  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1), 
-  spatial.covars = lscp, start = c(500, 500), 
-  return.raster = TRUE, max.dist = 100)
-plot(dk7)
+  ~ sl_ + log_sl_ + cos_ta_ + hab1_end, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab1_end" = 1), 
+  spatial.covars = G1, start = c(500, 500), 
+  return.raster = TRUE, max.dist = 67)
+raster::plot(dk7)
+```
+We can now even add an interaction between movement and habitat selection. For example the directional persistence now depends on the habitat at the center of the dispersal kernel. 
 
-#' Finally lets add an interaction between movement hand habitat: The directional persistance now depends on the start of the habitat
-
+```{r}
 dk8 <- dispersal_kernel(
-  ~ sl_ + log_sl_ + cos_ta_ + hab2_end + cos_ta_:hab2_start, 
-  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1, 
-                   "cos_ta_:hab2_start" = -2), 
-  spatial.covars = lscp, start = c(500, 490), 
-  return.raster = TRUE, max.dist = 100)
-plot(dk8)
+  ~ sl_ + log_sl_ + cos_ta_ + hab1_end + cos_ta_:hab1_start, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, 
+                   "hab1_end" = 0.5, "cos_ta_:hab1_start" = -2), 
+  spatial.covars = G1, start = c(400, 400), 
+  return.raster = TRUE, max.dist = 67)
+raster::plot(dk8)
+```
 
-#' Now lets start from a different position (i.e., where `hab2_start = 1`)
+Exactly the same dispersal kernel, but at a different start position.
+
+```{r}
 dk9 <- dispersal_kernel(
-  ~ sl_ + log_sl_ + cos_ta_ + hab2_end + cos_ta_:hab2_start, 
-  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, "hab2_end" = 1, 
-                   "cos_ta_:hab2_start" = -2), 
-  spatial.covars = lscp, start = c(500, 510), 
-  return.raster = TRUE, max.dist = 100)
-plot(dk9)
+  ~ sl_ + log_sl_ + cos_ta_ + hab1_end + cos_ta_:hab1_start, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 2, 
+                   "hab1_end" = 0.5, "cos_ta_:hab1_start" = -2), 
+  spatial.covars = G1, start = c(600, 600), 
+  return.raster = TRUE, max.dist = 67)
+raster::plot(dk9)
+```
 
 
 
-#' # How long does it take
-#+echo = FALSE
+
+#### How long does it take
+
+```{r}
+library(tidyverse)
+
 res <- map(c(0.5, 1, 5, 10, 20, 50), ~ {
   lscp1 <- raster(xmn = 0, xmx = 1e3, ymn = 0, ymx = 1e3, res = .)
   lscp1[] <- 1
-  lscp <- stack(lscp1)
+  lscp <- raster::stack(lscp1)
   names(lscp) <- "hab1"
   
   system.time(
     dk1 <- dispersal_kernel(
-      ~ sl_ + log_sl_, 
-      coefficients = c("hab1" = -0.1, "log_sl_" = 1), 
+      ~ sl_ + log_sl_ + hab1_end, 
+      coefficients = c(sl_ = -0.1, "log_sl_" = 1, "hab1_end" = 2), 
       spatial.covars = lscp, start = c(500, 500), 
       return.raster = TRUE, max.dist = 100)
   )
@@ -231,18 +255,132 @@ tibble(
 ) %>% ggplot(aes(x, y)) + geom_point() +
   scale_x_continuous(trans = "log10") +
   labs(x = "No cells in dispersal kernel", y = "Time [s]")
+```
 
-#' For < 1000 cells in the dispersal kernel, the computation time is < 0.1 seconds. 
-#' 
-
-
-### Dispersal kernel from a fitted model
 
 ## Simulate a trajectory
+
+The next step is to simulate many dispersal kernels and sample a location where the animal is at the next time step from each dispersal kernel. 
+The function `simulate_track()` is doing exactly this. 
+
+```{r}
+res1 <- simulate_track(
+  ~ sl_ + log_sl_ + cos_ta_, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10),
+  spatial.covars = G, start = c(100, 100), 
+  n = 20, direction = pi/4) 
+
+plot(res1, type = "l")
+```
+
+```{r}
+
+system.time(
+  res1 <- map(1:200, ~ {
+    simulate_track(
+      ~ sl_ + log_sl_ + cos_ta_ + cos_ta_:hab2_start, 
+      coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10, "hab2_end" = 1, 
+                       "cos_ta_:hab2_start" = -10), 
+      spatial.covars = lscp, start = c(100, 100), n = 20, direction = pi/4) %>% 
+      mutate(rep = .x, t = 1:nrow(.))}) 
+)
+
+```
+
 
 ## Simulate a transient utilization distribution (TUD)
 
 ## Simulate a steady state utilization distribution (SSUD)
+
+## Real data
+
+```{r}
+data(deer)
+data(sh_forest)
+```
+
+
+```{r}
+forest <- sh_forest == 1
+```
+
+Fit a step selection function
+
+```{r}
+ssf_data <- deer %>%
+  steps_by_burst() %>%
+  random_steps(n = 15) %>%
+  extract_covariates(forest) %>%
+  mutate(cos_ta = cos(ta_),
+         log_sl = log(sl_))
+
+m2 <- ssf_data %>%
+  fit_clogit(case_ ~ layer + cos_ta + sl_ + layer:sl_ + 
+               strata(step_id_))
+
+summary(m2)
+```
+
+Lets get the coefficients for simulating a dispersal kernel
+
+```{r}
+sim_coef <- c(
+  "layer_end" = unname(coef(m2)["layer"]),
+  "log_sl_" = unname(shape_to_log_sl(sl_distr_params(m2)$shape)), 
+  "sl_" = unname(scale_to_sl(sl_distr_params(m2)$scale) + coef(m2)["sl_"]), 
+  "layer_end:sl_" = unname(coef(m2)["layer:sl_"]), 
+  "cos_ta_" = unname(kappa_to_cos_ta(ta_distr_params(m2)$kappa) + coef(m2)["cos_ta"]))
+```
+
+Dispersal kernel at position two. 
+
+```{r, eval = FALSE}
+# from position 2
+dk_p2 <- dispersal_kernel(
+  ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
+  coefficients = sim_coef, 
+  spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
+  return.raster = TRUE, 
+  max.dist = ceiling(qgamma(0.99, shape = sl_distr_params(m2)$shape, 
+                    scale = sl_distr_params(m2)$scale)))
+plot(dk_p2)
+
+trk1 <- simulate_track(
+  ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
+  coefficients = sim_coef, 
+  spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
+  max.dist = ceiling(qgamma(0.95, shape = sl_distr_params(m2)$shape, 
+                    scale = sl_distr_params(m2)$scale)), 
+  n = 100
+)
+
+#' Plot the track
+trk1 %>% 
+  ggplot(aes(x_, y_)) + geom_path() + 
+  geom_point(x = deer$x_[2], y = deer$y_[2], col = "red") +
+  coord_equal()
+
+# Simulate 20 tracks
+trks <- map(1:20, ~ {
+  simulate_track(
+    ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
+    coefficients = sim_coef, 
+    spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
+    direction = pi/4, 
+    max.dist = ceiling(qgamma(0.95, shape = sl_distr_params(m2)$shape, 
+                              scale = sl_distr_params(m2)$scale)), 
+    n = 100
+  ) %>% mutate(rep = .x)
+}
+)
+
+#' The individual paths
+trks %>% bind_rows() %>% 
+  ggplot(aes(x_, y_, group = rep)) + geom_path(alpha = 0.1) +
+  geom_point(x = deer$x_[2], y = deer$y_[2], col = "red") +
+  coord_equal()
+```
+
 
 ## Session
 
@@ -251,4 +389,3 @@ sessioninfo::session_info()
 ```
 
 
---->
