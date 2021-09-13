@@ -266,3 +266,23 @@ simulate_track <- function(
     trk
   }
 }
+
+#' @rdname simulate
+#' @param n.sim The number of simulations.
+#' @export
+simulate_track_many <- function(wx, coefficients, start, spatial.covars,
+  direction = 0, temporal.covars = NULL, max.dist = 100, n = 10, n.sim = 1,
+  as.track = TRUE, start.time = lubridate::ymd_hms("2020-01-01 00:00:00"),
+  delta.time = hours(2)) {
+
+  res1 <- lapply(1:n.sim, function(i) {
+    xx <- simulate_track(
+      wx = wx, coefficients = coefficients, start = start,
+      spatial.covars = spatial.covars, direction = direction,
+      temporal.covars = temporal.covars, max.dist = max.dist, n = n,
+      as.track = as.track, start.time = start.time, delta.time = delta.time)
+    xx$rep_ <- i
+    xx
+  })
+  do.call(rbind, res1)
+}

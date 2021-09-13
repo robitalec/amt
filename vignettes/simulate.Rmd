@@ -24,6 +24,7 @@ This formulation comes with the advantage that the model can be easily parameter
 #### Only movement (movement kernel)
 
 ```{r}
+library(sf)
 library(amt)
 ```
 
@@ -264,35 +265,111 @@ The next step is to simulate many dispersal kernels and sample a location where 
 The function `simulate_track()` is doing exactly this. 
 
 ```{r}
+set.seed(123)
 res1 <- simulate_track(
   ~ sl_ + log_sl_ + cos_ta_, 
   coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10),
   spatial.covars = G, start = c(100, 100), 
   n = 20, direction = pi/4) 
 
-plot(res1, type = "l")
+ggplot(res1, aes(x_, y_)) + geom_line() +
+  coord_equal()
 ```
 
 ```{r}
+set.seed(123)
+res2 <- simulate_track_many(
+  ~ sl_ + log_sl_ + cos_ta_, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10),
+  spatial.covars = G, start = c(100, 100), 
+  n = 20, direction = pi/4, n.sim = 20) 
 
-system.time(
-  res1 <- map(1:200, ~ {
-    simulate_track(
-      ~ sl_ + log_sl_ + cos_ta_ + cos_ta_:hab2_start, 
-      coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10, "hab2_end" = 1, 
-                       "cos_ta_:hab2_start" = -10), 
-      spatial.covars = lscp, start = c(100, 100), n = 20, direction = pi/4) %>% 
-      mutate(rep = .x, t = 1:nrow(.))}) 
+ggplot(res2, aes(x_, y_, group = rep_)) + geom_path(alpha = 0.3) +
+  coord_equal()
+
+
+```
+
+We can add more realism here by adding attraction to an endpoint
+
+```{r}
+# Create an end point
+G_dest <- G[[1]]
+G_dest[] <- NA
+G_dest[50, 950] <- 1
+G_dest <- raster::stack(raster::distance(G_dest))
+names(G_dest) <- "dest"
+raster::plot(G_dest)
+```
+
+Now lets simulate 20 trajectories (all starting at the same point) with the same attraction to the endpoint. 
+
+```{r}
+set.seed(123)
+res2 <- simulate_track_many(
+  ~ sl_ + log_sl_ + cos_ta_ + dest_end, 
+  coefficients = c("sl_" = -0.1, "log_sl_" = 1, "cos_ta_" = 10, 
+                   "dest_end" = -0.5),
+  spatial.covars = G_dest, start = c(100, 100), 
+  n = 20, direction = pi/4, n.sim = 20) 
+
+ggplot(res2, aes(x_, y_, group = rep_)) + geom_path(alpha = 0.3) +
+  coord_equal()
+```
+
+We can also add a second resource (e.g., a patch that will be avoided). 
+
+```{r, results="hide"}
+G <- raster::raster(xmn = -500, xmx = 1500, ymn = -500, ymx = 1500, res = 1)
+G_bar <- raster::rasterize(
+  as_Spatial(st_as_sfc(list(st_buffer(st_point(c(500, 500)), dist = 250)))), 
+  G, background = 0)
+
+G_dest <- raster::rasterize(cbind(900, 900), G)
+G_dest <- raster::distance(G_dest) / 1e3
+names(G_dest) <- "dest"
+G3 <- raster::stack(G_dest, G_bar)
+names(G3) <- c("dest", "bar")
+
+raster::plot(G3)
+set.seed(123)
+```
+
+Now simulate 10 trajectories. 
+
+```{r, results="hide"}
+system.time({
+  res2 <- simulate_track_many(
+    ~ sl_ + log_sl_ + cos_ta_ + dest_end + bar_end, 
+    coefficients = c("sl_" = -.1, "log_sl_" = 1, "cos_ta_" = 0, 
+                     "dest_end" = -40, "bar_end" = -30),
+    spatial.covars = G3, start = c(100, 100), 
+    n = 100, direction = pi/4, n.sim = 10) 
+})
+
+raster::plot(G3[["bar"]])
+points(100, 100, col = "red", pch = 20)
+points(900, 900, col = "blue", pch = 20)
+sapply(split(res2, res2$rep_), function(xx) 
+  lines(xx$x_, xx$y_, col = adjustcolor("red", 0.3))
 )
-
 ```
 
 
 ## Simulate a transient utilization distribution (TUD)
 
+To possible options to move forward here: 
+
+1. Repeat the previous step many time and just plot a map with individual trajectories, or
+2. Count for every cell how often the animals passes through the cell. 
+
 ## Simulate a steady state utilization distribution (SSUD)
 
+Some more work needs to be done here, do have a look at [Potts and Schlägel 2020](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13406). 
+
 ## Real data
+
+We will use a red deer from northern Germany to show how the simulation approach could be applied to real data. 
 
 ```{r}
 data(deer)
@@ -302,9 +379,10 @@ data(sh_forest)
 
 ```{r}
 forest <- sh_forest == 1
+forest <- raster::stack(forest)
 ```
 
-Fit a step selection function
+The first step is to fit a step selection function: 
 
 ```{r}
 ssf_data <- deer %>%
@@ -321,7 +399,7 @@ m2 <- ssf_data %>%
 summary(m2)
 ```
 
-Lets get the coefficients for simulating a dispersal kernel
+Now we have to get the coefficient values for the simulations. This can be a bit tricky. For spatial covariates (e.g. `layer`) it is just the value of the coefficient from the fitted model (`m2`). For movement related covariates (e.g., `log_sl_`) we have to translate the tentative parameter to coefficients of the selection function. If we have included these covariates in the original model (for example `sl_`), we also have to adjust the estimates by adding the coeffient value to the tentative estimate.
 
 ```{r}
 sim_coef <- c(
@@ -332,26 +410,30 @@ sim_coef <- c(
   "cos_ta_" = unname(kappa_to_cos_ta(ta_distr_params(m2)$kappa) + coef(m2)["cos_ta"]))
 ```
 
-Dispersal kernel at position two. 
+Now it is possible to calculate the dispersal kernel at any position: 
 
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 # from position 2
 dk_p2 <- dispersal_kernel(
   ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
   coefficients = sim_coef, 
-  spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
+  spatial.covars = forest, start = c(deer$x_[2], deer$y_[2]), 
   return.raster = TRUE, 
   max.dist = ceiling(qgamma(0.99, shape = sl_distr_params(m2)$shape, 
                     scale = sl_distr_params(m2)$scale)))
-plot(dk_p2)
+raster::plot(dk_p2)
+```
 
+Or simulate a trajectory
+
+```{r, eval = FALSE}
 trk1 <- simulate_track(
   ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
   coefficients = sim_coef, 
-  spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
+  spatial.covars = forest, start = c(deer$x_[2], deer$y_[2]), 
   max.dist = ceiling(qgamma(0.95, shape = sl_distr_params(m2)$shape, 
-                    scale = sl_distr_params(m2)$scale)), 
-  n = 100
+                            scale = sl_distr_params(m2)$scale)), 
+  n = 20
 )
 
 #' Plot the track
@@ -359,24 +441,25 @@ trk1 %>%
   ggplot(aes(x_, y_)) + geom_path() + 
   geom_point(x = deer$x_[2], y = deer$y_[2], col = "red") +
   coord_equal()
+)
+```
 
-# Simulate 20 tracks
-trks <- map(1:20, ~ {
-  simulate_track(
-    ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
-    coefficients = sim_coef, 
-    spatial.covars = stack(forest), start = c(deer$x_[2], deer$y_[2]), 
-    direction = pi/4, 
-    max.dist = ceiling(qgamma(0.95, shape = sl_distr_params(m2)$shape, 
-                              scale = sl_distr_params(m2)$scale)), 
-    n = 100
-  ) %>% mutate(rep = .x)
-}
+It is probably more interesting to repeat this step many times (e.g., 20 times).
+
+```{r}
+trks1 <- simulate_track_many(
+  ~ layer_end + cos_ta_ + sl_ + log_sl_ + layer_end:sl_, 
+  coefficients = sim_coef, 
+  direction = pi/2,
+  spatial.covars = forest, start = c(deer$x_[2], deer$y_[2]), 
+  max.dist = ceiling(qgamma(0.95, shape = sl_distr_params(m2)$shape, 
+                            scale = sl_distr_params(m2)$scale)), 
+  n = 20, n.sim = 20
 )
 
-#' The individual paths
-trks %>% bind_rows() %>% 
-  ggplot(aes(x_, y_, group = rep)) + geom_path(alpha = 0.1) +
+# Create an other plot
+trks1 %>% bind_rows() %>% 
+  ggplot(aes(x_, y_, group = rep_)) + geom_path(alpha = 0.1) +
   geom_point(x = deer$x_[2], y = deer$y_[2], col = "red") +
   coord_equal()
 ```
