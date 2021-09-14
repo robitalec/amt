@@ -19,29 +19,34 @@ kappa_to_cos_ta <- function(param) {
 }
 
 #' @rdname Transformations
+#' @export
 scale_to_sl <- function(param) {
   checkmate::assert_number(param, lower = .Machine$double.eps)
   c("sl_" = -1 / param )
 }
 
 #' @rdname Transformations
+#' @export
 shape_to_log_sl <- function(param) {
   checkmate::assert_number(param, lower = .Machine$double.eps)
   c("log_sl_" = param - 1)
 }
 
 #' @rdname Transformations
+#' @export
 #' @param coef Name of the coefficient.
 sl_to_scale <- function(coef) {
   c("scale" = -1/coef)
 }
 
 #' @rdname Transformations
+#' @export
 log_sl_to_shape <- function(coef) {
   c("shape" = coef + 1)
 }
 
 #' @rdname Transformations
+#' @export
 cos_ta_to_kappa <- function(coef) {
   c("kappa" = coef)
 }
@@ -176,6 +181,7 @@ kernel_finish <- function(
 #' @param max.dist Maximum dispersal distance.
 #' @param return.raster Should a raster be returned?
 #' @param normalize Should the raste be normalized at the end?
+#' @export
 #' @name simulate
 
 dispersal_kernel <- function(

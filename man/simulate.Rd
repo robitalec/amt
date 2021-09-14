@@ -4,6 +4,7 @@
 \alias{simulate}
 \alias{dispersal_kernel}
 \alias{simulate_track}
+\alias{simulate_track_many}
 \title{Function to calculate a dispersal kernel, given covariates and coefficients.}
 \usage{
 dispersal_kernel(
@@ -28,7 +29,22 @@ simulate_track(
   max.dist = 100,
   n = 10,
   as.track = TRUE,
-  start.time = ymd_hms("2020-01-01 00:00:00"),
+  start.time = lubridate::ymd_hms("2020-01-01 00:00:00"),
+  delta.time = hours(2)
+)
+
+simulate_track_many(
+  wx,
+  coefficients,
+  start,
+  spatial.covars,
+  direction = 0,
+  temporal.covars = NULL,
+  max.dist = 100,
+  n = 10,
+  n.sim = 1,
+  as.track = TRUE,
+  start.time = lubridate::ymd_hms("2020-01-01 00:00:00"),
   delta.time = hours(2)
 )
 }
@@ -58,6 +74,8 @@ simulate_track(
 \item{start.time}{The time stamp of the first simulated location.}
 
 \item{delta.time}{Time increment for each subsequent step.}
+
+\item{n.sim}{The number of simulations.}
 }
 \description{
 Function to calculate a dispersal kernel, given covariates and coefficients.
