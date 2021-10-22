@@ -141,7 +141,8 @@ kernel_add_covars <- function(kernel, spatial.covars, position, temporal.covars 
 #' @param return.raster Should a raster be returned or not?
 #' @param normalize Should the kernel be normaliszed
 kernel_finish <- function(
-  kernel, formula, coefficients, return.raster = FALSE, normalize = TRUE) {
+  kernel, formula, coefficients, return.raster = FALSE, normalize = TRUE,
+  correct = TRUE) {
 
   checkmate::assert_tibble(kernel)
   checkmate::assert_formula(formula)
@@ -160,6 +161,10 @@ kernel_finish <- function(
 
   # Multiply with coefficients
   kernel$dk <- exp((design_matrix %*% coefficients[colnames(design_matrix)])[, 1])
+
+  if (correct) {
+    kernel$dk <- kernel$dk / kernel$sl_
+  }
   if (normalize) {
     kernel$dk <- kernel$dk / sum(kernel$dk, na.rm = TRUE)
   }
@@ -187,7 +192,7 @@ kernel_finish <- function(
 dispersal_kernel <- function(
   wx, coefficients, start,
   spatial.covars, temporal.covars = NULL,
-  direction = 0, max.dist = 100, return.raster = FALSE, normalize = TRUE) {
+  direction = 0, max.dist = 100, return.raster = FALSE, normalize = TRUE, correct = TRUE) {
 
   dk0 <- kernel_setup(spatial.covars, max.dist = max.dist, position = start)
   dk1 <- kernel_shift(dk0, dxy = start)
@@ -196,7 +201,7 @@ dispersal_kernel <- function(
                            position = start,
                            temporal.covars = temporal.covars)
   dk4 <- kernel_finish(dk3, formula = wx, coefficients = coefficients,
-                       return.raster = return.raster, normalize = normalize)
+                       return.raster = return.raster, normalize = normalize, correct = correct)
 
 }
 
