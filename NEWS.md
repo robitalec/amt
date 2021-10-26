@@ -6,6 +6,7 @@
 - Added `as_track` for `data.frames`.
 - Added argument `verbose` to `make_track()`. 
 - Fixed bug with `hr_isopleths()` for aKDE.
+- Fixed `points()` for tracks. 
 
 # amt 0.1.4
 ## updates

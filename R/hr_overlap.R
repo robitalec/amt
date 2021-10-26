@@ -7,6 +7,7 @@
 #'   used. If `TRUE` levels from that were used to estimate home ranges will be
 #'   used.
 #' @template dots_none
+#' @details The return value of `UDOI` is 0 if two utilization distributions (UDs) do not overlap. If two uniformly distributed UDs perfectly overlap the value is approximately 1 and the value can be > 1 if two nonuniformly distributed UDs have a high degree of overlap.
 #' @return \code{data.frame} with the isopleth level and area in units of the
 #'   coordinate reference system.
 #' @name hr_overlaps
